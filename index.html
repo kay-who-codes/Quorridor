@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QUORIDOR</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Crimson+Pro:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0d0d0f;
+    --surface:   #13131a;
+    --panel:     #1a1a24;
+    --border:    #2a2a3a;
+    --gold:      #c9a84c;
+    --gold-dim:  #7a6230;
+    --gold-glow: rgba(201,168,76,0.18);
+    --p1:        #e8c96d;
+    --p1-glow:   rgba(232,201,109,0.5);
+    --p2:        #7eb8d4;
+    --p2-glow:   rgba(126,184,212,0.5);
+    --wall:      #d4704a;
+    --wall-preview: rgba(212,112,74,0.55);
+    --cell-size: 56px;
+    --gap:       10px;
+    --wall-w:    10px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: #e8e2d4;
+    font-family: 'Crimson Pro', serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 24px 12px 40px;
+    overflow-x: hidden;
+  }
+
+  /* ── subtle grid texture ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(201,168,76,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(201,168,76,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── HEADER ── */
+  header {
+    position: relative; z-index: 1;
+    text-align: center;
+    margin-bottom: 22px;
+  }
+  .logo {
+    font-family: 'Cinzel', serif;
+    font-size: clamp(2rem, 6vw, 3.6rem);
+    font-weight: 900;
+    letter-spacing: 0.22em;
+    color: var(--gold);
+    text-shadow: 0 0 40px var(--gold-glow), 0 2px 0 #000;
+  }
+  .logo-sub {
+    font-family: 'Crimson Pro', serif;
+    font-style: italic;
+    font-size: 0.85rem;
+    letter-spacing: 0.32em;
+    color: var(--gold-dim);
+    margin-top: 2px;
+  }
+  .deco-line {
+    display: flex; align-items: center; justify-content: center;
+    gap: 12px; margin-top: 10px;
+  }
+  .deco-line::before, .deco-line::after {
+    content: '';
+    flex: 1; max-width: 120px; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gold-dim));
+  }
+  .deco-line::after { transform: scaleX(-1); }
+  .deco-diamond {
+    width: 7px; height: 7px;
+    background: var(--gold);
+    transform: rotate(45deg);
+    box-shadow: 0 0 8px var(--gold-glow);
+  }
+
+  /* ── GAME WRAPPER ── */
+  .game-wrap {
+    position: relative; z-index: 1;
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    justify-content: center;
+    width: 100%;
+  }
+
+  /* ── SIDE PANELS ── */
+  .side-panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 18px 16px;
+    width: 170px;
+    min-width: 140px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    box-shadow: 0 4px 30px rgba(0,0,0,0.5);
+  }
+  .player-card {
+    border-radius: 3px;
+    padding: 12px 10px;
+    border: 1px solid transparent;
+    transition: all 0.3s;
+  }
+  .player-card.p1 { border-color: var(--gold-dim); background: rgba(232,201,109,0.05); }
+  .player-card.p2 { border-color: #3a5a6a; background: rgba(126,184,212,0.05); }
+  .player-card.active-p1 { border-color: var(--p1); box-shadow: 0 0 16px var(--p1-glow); }
+  .player-card.active-p2 { border-color: var(--p2); box-shadow: 0 0 16px var(--p2-glow); }
+  .player-name {
+    font-family: 'Cinzel', serif;
+    font-size: 0.68rem;
+    letter-spacing: 0.18em;
+    font-weight: 700;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .p1 .player-name { color: var(--p1); }
+  .p2 .player-name { color: var(--p2); }
+  .player-label {
+    font-style: italic;
+    font-size: 0.78rem;
+    color: #777;
+    margin-bottom: 8px;
+  }
+  .walls-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    color: #666;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .walls-pips {
+    display: flex; flex-wrap: wrap; gap: 4px;
+  }
+  .pip {
+    width: 12px; height: 12px;
+    border-radius: 1px;
+    background: var(--wall);
+    box-shadow: 0 0 4px rgba(212,112,74,0.4);
+    transition: all 0.25s;
+  }
+  .pip.used {
+    background: #2a2220;
+    box-shadow: none;
+  }
+
+  .mode-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: #aaa;
+    font-family: 'Cinzel', serif;
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    padding: 7px 6px;
+    cursor: pointer;
+    border-radius: 2px;
+    text-transform: uppercase;
+    transition: all 0.2s;
+    width: 100%;
+  }
+  .mode-btn:hover { border-color: var(--gold-dim); color: var(--gold); }
+  .mode-btn.active-mode {
+    background: var(--gold-glow);
+    border-color: var(--gold);
+    color: var(--gold);
+    box-shadow: 0 0 10px var(--gold-glow);
+  }
+
+  .rules-tiny {
+    font-size: 0.72rem;
+    color: #555;
+    line-height: 1.55;
+    font-style: italic;
+  }
+
+  /* ── STATUS BAR ── */
+  .status-bar {
+    font-family: 'Cinzel', serif;
+    font-size: 0.75rem;
+    letter-spacing: 0.18em;
+    text-align: center;
+    padding: 9px 18px;
+    border-radius: 3px;
+    margin-bottom: 14px;
+    transition: all 0.4s;
+    min-height: 38px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--panel);
+    border: 1px solid var(--border);
+  }
+  .status-bar.turn-p1 { color: var(--p1); border-color: var(--gold-dim); }
+  .status-bar.turn-p2 { color: var(--p2); border-color: #3a5a6a; }
+  .status-bar.win { color: var(--gold); border-color: var(--gold); box-shadow: 0 0 20px var(--gold-glow); font-size: 0.9rem; letter-spacing: 0.22em; }
+
+  /* ── BOARD CONTAINER ── */
+  .board-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  /* ── THE BOARD ── */
+  /*
+    Board is drawn as a CSS grid of alternating cell/gap rows&cols.
+    9 cells + 8 gaps in each axis, plus 2 outer half-gaps = visual border.
+    Each "gap col/row" = --wall-w wide, used for walls.
+  */
+  .board {
+    display: grid;
+    /* 9 cells + 8 gaps */
+    grid-template-columns: repeat(9, var(--cell-size)) ;
+    grid-template-rows:    repeat(9, var(--cell-size)) ;
+    /* visual gaps between cells provided by gap overlays */
+    gap: var(--gap);
+    position: relative;
+    background: var(--surface);
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    box-shadow:
+      0 0 0 1px var(--gold-dim),
+      0 8px 60px rgba(0,0,0,0.7),
+      inset 0 0 30px rgba(0,0,0,0.3);
+    user-select: none;
+  }
+
+  /* ── CELLS ── */
+  .cell {
+    width: var(--cell-size);
+    height: var(--cell-size);
+    background: #18181f;
+    border-radius: 2px;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.15s, box-shadow 0.15s;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid #1e1e28;
+  }
+  .cell:hover { background: #1e1e2c; }
+  .cell.valid-move {
+    background: rgba(201,168,76,0.12);
+    border-color: rgba(201,168,76,0.35);
+    box-shadow: inset 0 0 10px rgba(201,168,76,0.08);
+    cursor: pointer;
+  }
+  .cell.valid-move::after {
+    content: '';
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: rgba(201,168,76,0.5);
+    box-shadow: 0 0 8px rgba(201,168,76,0.4);
+  }
+
+  /* ── PAWNS ── */
+  .pawn {
+    position: absolute;
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    pointer-events: none;
+    transition: all 0.28s cubic-bezier(0.34,1.56,0.64,1);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Cinzel', serif;
+    font-weight: 900;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    z-index: 10;
+  }
+  .pawn-1 {
+    background: radial-gradient(circle at 35% 35%, #f2da8c, #c9a84c, #7a6230);
+    color: #3a2a00;
+    box-shadow: 0 0 0 2px var(--p1), 0 0 18px var(--p1-glow), 0 3px 8px rgba(0,0,0,0.6);
+  }
+  .pawn-2 {
+    background: radial-gradient(circle at 35% 35%, #acd8ec, #5a9ebb, #2a5f7a);
+    color: #001a25;
+    box-shadow: 0 0 0 2px var(--p2), 0 0 18px var(--p2-glow), 0 3px 8px rgba(0,0,0,0.6);
+  }
+
+  /* ── WALL SLOTS (overlaid on the grid gaps) ── */
+  /* We'll use absolutely positioned elements over the board */
+  .wall-layer {
+    position: absolute;
+    inset: 14px; /* match board padding */
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  .wall-slot {
+    position: absolute;
+    border-radius: 2px;
+    pointer-events: all;
+    cursor: pointer;
+    transition: background 0.15s, box-shadow 0.15s;
+  }
+  .wall-slot.h {
+    height: var(--wall-w);
+    /* width = 2*cell + 1*gap */
+  }
+  .wall-slot.v {
+    width: var(--wall-w);
+    /* height = 2*cell + 1*gap */
+  }
+  .wall-slot:not(.placed):not(.blocked) {
+    background: rgba(255,255,255,0.03);
+  }
+  .wall-slot:not(.placed):not(.blocked):hover {
+    background: var(--wall-preview);
+    box-shadow: 0 0 10px rgba(212,112,74,0.5);
+  }
+  .wall-slot.placed {
+    background: var(--wall);
+    box-shadow: 0 0 10px rgba(212,112,74,0.6);
+    pointer-events: none;
+  }
+  .wall-slot.blocked {
+    background: rgba(212,112,74,0.08);
+    cursor: not-allowed;
+  }
+
+  /* ── GOAL INDICATORS ── */
+  .goal-row-top    > .cell { box-shadow: inset 0 3px 0 rgba(126,184,212,0.4); }
+  .goal-row-bottom > .cell { box-shadow: inset 0 -3px 0 rgba(232,201,109,0.4); }
+
+  /* ── RESET BTN ── */
+  .reset-btn {
+    margin-top: 14px;
+    background: transparent;
+    border: 1px solid var(--gold-dim);
+    color: var(--gold-dim);
+    font-family: 'Cinzel', serif;
+    font-size: 0.65rem;
+    letter-spacing: 0.2em;
+    padding: 8px 24px;
+    cursor: pointer;
+    border-radius: 2px;
+    text-transform: uppercase;
+    transition: all 0.2s;
+  }
+  .reset-btn:hover {
+    border-color: var(--gold);
+    color: var(--gold);
+    box-shadow: 0 0 12px var(--gold-glow);
+  }
+
+  /* ── WIN OVERLAY ── */
+  .win-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 100;
+    align-items: center; justify-content: center;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .win-overlay.show { display: flex; }
+  .win-title {
+    font-family: 'Cinzel', serif;
+    font-size: clamp(2rem, 7vw, 4rem);
+    font-weight: 900;
+    letter-spacing: 0.2em;
+    color: var(--gold);
+    text-shadow: 0 0 60px var(--gold-glow);
+    animation: pulse-gold 1.6s ease-in-out infinite;
+  }
+  .win-sub {
+    font-style: italic;
+    font-size: 1.1rem;
+    color: #aaa;
+    letter-spacing: 0.15em;
+  }
+  .win-btn {
+    background: var(--gold);
+    border: none;
+    color: #0d0d0f;
+    font-family: 'Cinzel', serif;
+    font-weight: 700;
+    font-size: 0.75rem;
+    letter-spacing: 0.22em;
+    padding: 12px 32px;
+    cursor: pointer;
+    border-radius: 2px;
+    text-transform: uppercase;
+    margin-top: 10px;
+    transition: all 0.2s;
+    box-shadow: 0 0 20px var(--gold-glow);
+  }
+  .win-btn:hover { box-shadow: 0 0 36px var(--gold-glow); }
+
+  @keyframes pulse-gold {
+    0%, 100% { text-shadow: 0 0 40px var(--gold-glow); }
+    50%       { text-shadow: 0 0 80px rgba(201,168,76,0.5); }
+  }
+
+  /* ── ROW LABELS ── */
+  .board-labels {
+    display: flex;
+    gap: var(--gap);
+    padding: 0 14px;
+    pointer-events: none;
+  }
+  .label {
+    width: var(--cell-size);
+    text-align: center;
+    font-family: 'Cinzel', serif;
+    font-size: 0.58rem;
+    letter-spacing: 0.12em;
+    color: var(--gold-dim);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">QUORIDOR</div>
+  <div class="logo-sub">a game of passage and obstruction</div>
+  <div class="deco-line"><div class="deco-diamond"></div></div>
+</header>
+
+<!-- Status -->
+<div class="status-bar turn-p1" id="statusBar">PLAYER 1 — MOVE YOUR PAWN OR PLACE A WALL</div>
+
+<div class="game-wrap">
+
+  <!-- Left panel: Player 1 -->
+  <div class="side-panel">
+    <div class="player-card p1 active-p1" id="card1">
+      <div class="player-name">Player I</div>
+      <div class="player-label">golden pawn · north</div>
+      <div class="walls-label">Walls Remaining</div>
+      <div class="walls-pips" id="pips1"></div>
+    </div>
+    <button class="mode-btn" id="modeBtn1" onclick="toggleMode()">⊞ Place Wall</button>
+    <div class="rules-tiny">
+      Reach the opposite side to win.<br><br>
+      Click your pawn's highlighted squares to move.<br><br>
+      Switch to Wall mode to place barriers — walls span 2 cells.
+    </div>
+  </div>
+
+  <!-- Board -->
+  <div class="board-wrap">
+    <div class="board-labels" id="colLabels"></div>
+    <div class="board" id="board">
+      <!-- cells rendered by JS -->
+      <div class="wall-layer" id="wallLayer"></div>
+    </div>
+    <button class="reset-btn" onclick="initGame()">↺ &nbsp; New Game</button>
+  </div>
+
+  <!-- Right panel: Player 2 -->
+  <div class="side-panel">
+    <div class="player-card p2" id="card2">
+      <div class="player-name">Player II</div>
+      <div class="player-label">azure pawn · south</div>
+      <div class="walls-label">Walls Remaining</div>
+      <div class="walls-pips" id="pips2"></div>
+    </div>
+    <button class="mode-btn" id="modeBtn2" onclick="toggleMode()">⊞ Place Wall</button>
+    <div class="rules-tiny">
+      Walls cannot completely block a player from reaching their goal.<br><br>
+      Players may jump over each other when adjacent.
+    </div>
+  </div>
+
+</div>
+
+<!-- Win overlay -->
+<div class="win-overlay" id="winOverlay">
+  <div class="win-title" id="winTitle"></div>
+  <div class="win-sub" id="winSub"></div>
+  <button class="win-btn" onclick="initGame(); document.getElementById('winOverlay').classList.remove('show')">Play Again</button>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════
+// QUORIDOR ENGINE
+// ════════════════════════════════════════════════════
+
+const CELLS = 9;
+const WALLS_PER_PLAYER = 10;
+
+// State
+let state = {};
+
+function initGame() {
+  state = {
+    // pawns: [row, col] (0-indexed)
+    pawns: [[8, 4], [0, 4]],
+    // walls remaining
+    wallsLeft: [WALLS_PER_PLAYER, WALLS_PER_PLAYER],
+    // placed walls: {key: true}
+    // hWalls[r][c] = true means horizontal wall starting at (r,c), blocking (r,c)-(r,c+1) from (r+1,c)-(r+1,c+1)
+    // A horizontal wall at grid-position (r,c) blocks passage between row r and r+1 at col c and c+1
+    hWalls: {},
+    // vWalls[r][c] = true means vertical wall blocking col c to c+1 at rows r and r+1
+    vWalls: {},
+    currentPlayer: 0, // 0 or 1
+    mode: 'move', // 'move' or 'wall'
+    gameOver: false,
+  };
+  renderAll();
+  updateStatus();
+}
+
+// ── WALL KEY HELPERS ──
+function hwKey(r, c) { return `h_${r}_${c}`; }
+function vwKey(r, c) { return `v_${r}_${c}`; }
+
+// ── CAN MOVE between cells? (no wall blocking) ──
+// direction: N=up(-1,0) S=down(+1,0) E=right(0,+1) W=left(0,-1)
+function wallBlocks(r1, c1, r2, c2) {
+  // Moving south: r2=r1+1 → blocked by hWall at (r1, min(c1,c1)) ... actually hWall at row r1 col c
+  // A hWall at (r,c) blocks passage between (r,c),(r,c+1) and (r+1,c),(r+1,c+1)
+  // So moving from (r,c) to (r+1,c): check hWall(r,c-1) and hWall(r,c)
+  // Moving east: vWall(r,c) or vWall(r-1,c)
+  const dr = r2 - r1, dc = c2 - c1;
+  if (dr === 1 && dc === 0) { // south
+    return state.hWalls[hwKey(r1, c1)] || state.hWalls[hwKey(r1, c1-1)];
+  }
+  if (dr === -1 && dc === 0) { // north
+    return state.hWalls[hwKey(r2, c2)] || state.hWalls[hwKey(r2, c2-1)];
+  }
+  if (dc === 1 && dr === 0) { // east
+    return state.vWalls[vwKey(r1, c1)] || state.vWalls[vwKey(r1-1, c1)];
+  }
+  if (dc === -1 && dr === 0) { // west
+    return state.vWalls[vwKey(r1, c2)] || state.vWalls[vwKey(r1-1, c2)];
+  }
+  return false;
+}
+
+function inBounds(r, c) { return r >= 0 && r < CELLS && c >= 0 && c < CELLS; }
+
+// ── VALID MOVES for a pawn ──
+function getValidMoves(player) {
+  const [pr, pc] = state.pawns[player];
+  const [or, oc] = state.pawns[1 - player];
+  const moves = [];
+  const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+
+  for (const [dr, dc] of dirs) {
+    const nr = pr + dr, nc = pc + dc;
+    if (!inBounds(nr, nc)) continue;
+    if (wallBlocks(pr, pc, nr, nc)) continue;
+    if (nr === or && nc === oc) {
+      // jump logic
+      const jr = or + dr, jc = oc + dc;
+      if (inBounds(jr, jc) && !wallBlocks(or, oc, jr, jc)) {
+        moves.push([jr, jc]);
+      } else {
+        // side jumps
+        for (const [sdr, sdc] of dirs) {
+          if (sdr === -dr && sdc === -dc) continue; // don't go back
+          const sr = or + sdr, sc = oc + sdc;
+          if (inBounds(sr, sc) && !wallBlocks(or, oc, sr, sc)) {
+            moves.push([sr, sc]);
+          }
+        }
+      }
+    } else {
+      moves.push([nr, nc]);
+    }
+  }
+  return moves;
+}
+
+// ── PATH EXISTS to goal? (BFS) ──
+function pathExists(player, hwSnapshot, vwSnapshot) {
+  const [sr, sc] = state.pawns[player];
+  const goalRow = player === 0 ? 0 : 8;
+  const visited = new Set();
+  const queue = [[sr, sc]];
+  visited.add(`${sr},${sc}`);
+  const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+
+  function wallBlocksSnap(r1,c1,r2,c2) {
+    const dr = r2-r1, dc = c2-c1;
+    if (dr===1&&dc===0) return hwSnapshot[hwKey(r1,c1)]||hwSnapshot[hwKey(r1,c1-1)];
+    if (dr===-1&&dc===0) return hwSnapshot[hwKey(r2,c2)]||hwSnapshot[hwKey(r2,c2-1)];
+    if (dc===1&&dr===0) return vwSnapshot[vwKey(r1,c1)]||vwSnapshot[vwKey(r1-1,c1)];
+    if (dc===-1&&dr===0) return vwSnapshot[vwKey(r1,c2)]||vwSnapshot[vwKey(r1-1,c2)];
+    return false;
+  }
+
+  while (queue.length) {
+    const [r, c] = queue.shift();
+    if (r === goalRow) return true;
+    for (const [dr, dc] of dirs) {
+      const nr = r+dr, nc = c+dc;
+      if (!inBounds(nr,nc)) continue;
+      if (visited.has(`${nr},${nc}`)) continue;
+      if (wallBlocksSnap(r,c,nr,nc)) continue;
+      visited.add(`${nr},${nc}`);
+      queue.push([nr,nc]);
+    }
+  }
+  return false;
+}
+
+// ── PLACE WALL ──
+function canPlaceWall(type, r, c) {
+  if (state.wallsLeft[state.currentPlayer] <= 0) return false;
+  const hw = {...state.hWalls}, vw = {...state.vWalls};
+
+  if (type === 'h') {
+    // hWall at (r,c): occupies (r,c) and (r,c+1) [if c+1 < 8]
+    if (r < 0 || r > 7 || c < 0 || c > 7) return false;
+    // Overlap check: same wall, or neighbour
+    if (hw[hwKey(r,c)]) return false;
+    if (hw[hwKey(r,c-1)] && hw[hwKey(r,c+1)]) return false; // triple overlap
+    // Cross check with vWall
+    if (vw[vwKey(r,c)]) return false;
+    hw[hwKey(r,c)] = true;
+  } else {
+    if (r < 0 || r > 7 || c < 0 || c > 7) return false;
+    if (vw[vwKey(r,c)]) return false;
+    if (hw[hwKey(r,c)]) return false;
+    vw[vwKey(r,c)] = true;
+  }
+
+  // Check path exists for both players
+  const snapH = hw, snapV = vw;
+  // Temporarily apply
+  const savedH = state.hWalls, savedV = state.vWalls;
+  state.hWalls = snapH; state.vWalls = snapV;
+  const ok = pathExists(0, snapH, snapV) && pathExists(1, snapH, snapV);
+  state.hWalls = savedH; state.vWalls = savedV;
+  return ok;
+}
+
+function placeWall(type, r, c) {
+  if (!canPlaceWall(type, r, c)) return false;
+  if (type === 'h') state.hWalls[hwKey(r, c)] = true;
+  else              state.vWalls[vwKey(r, c)] = true;
+  state.wallsLeft[state.currentPlayer]--;
+  nextTurn();
+  return true;
+}
+
+// ── MOVE PAWN ──
+function movePawn(player, r, c) {
+  state.pawns[player] = [r, c];
+  // Check win
+  if (player === 0 && r === 0) { gameOver(0); return; }
+  if (player === 1 && r === 8) { gameOver(1); return; }
+  nextTurn();
+}
+
+function nextTurn() {
+  state.currentPlayer = 1 - state.currentPlayer;
+  state.mode = 'move';
+  renderAll();
+  updateStatus();
+}
+
+function gameOver(winner) {
+  state.gameOver = true;
+  renderAll();
+  const names = ['Player I', 'Player II'];
+  document.getElementById('winTitle').textContent = names[winner] + ' WINS';
+  document.getElementById('winSub').textContent = winner === 0
+    ? 'The golden pawn reaches the northern shore.'
+    : 'The azure pawn crosses to the southern lands.';
+  document.getElementById('winOverlay').classList.add('show');
+}
+
+// ── TOGGLE MODE ──
+function toggleMode() {
+  if (state.gameOver) return;
+  state.mode = state.mode === 'move' ? 'wall' : 'move';
+  renderBoard();
+  updateStatus();
+  updateModeButtons();
+}
+
+function updateModeButtons() {
+  const isWall = state.mode === 'wall';
+  ['modeBtn1','modeBtn2'].forEach((id, i) => {
+    const btn = document.getElementById(id);
+    btn.classList.toggle('active-mode', isWall);
+    btn.textContent = isWall ? '✕ Cancel Wall' : '⊞ Place Wall';
+  });
+}
+
+// ════════════════════════════════════════════════════
+// RENDERING
+// ════════════════════════════════════════════════════
+
+const CELL = 56, GAP = 10;
+
+function cellOffset(idx) {
+  return idx * (CELL + GAP);
+}
+
+function renderAll() {
+  renderBoard();
+  renderPips();
+  updateCards();
+  updateModeButtons();
+}
+
+function renderBoard() {
+  const board = document.getElementById('board');
+  // Clear cells (keep wall-layer)
+  board.querySelectorAll('.cell').forEach(e => e.remove());
+
+  const validMoves = state.mode === 'move' && !state.gameOver
+    ? getValidMoves(state.currentPlayer)
+    : [];
+  const validSet = new Set(validMoves.map(([r,c]) => `${r},${c}`));
+
+  for (let r = 0; r < CELLS; r++) {
+    for (let c = 0; c < CELLS; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.r = r; cell.dataset.c = c;
+      if (validSet.has(`${r},${c}`)) cell.classList.add('valid-move');
+      cell.addEventListener('click', onCellClick);
+
+      // Goal row highlight
+      const p0goal = (r === 0), p1goal = (r === 8);
+      if (p0goal)  cell.style.boxShadow = 'inset 0 3px 0 rgba(126,184,212,0.35)';
+      if (p1goal)  cell.style.boxShadow = 'inset 0 -3px 0 rgba(232,201,109,0.35)';
+
+      board.insertBefore(cell, document.getElementById('wallLayer'));
+    }
+  }
+
+  // Render pawns
+  board.querySelectorAll('.pawn').forEach(e => e.remove());
+  for (let p = 0; p < 2; p++) {
+    const [pr, pc] = state.pawns[p];
+    const pawn = document.createElement('div');
+    pawn.className = `pawn pawn-${p+1}`;
+    pawn.textContent = p === 0 ? 'I' : 'II';
+    // Position: center of cell (pr, pc)
+    const x = 14 + cellOffset(pc) + CELL/2;
+    const y = 14 + cellOffset(pr) + CELL/2;
+    pawn.style.left = (x - 19) + 'px';
+    pawn.style.top  = (y - 19) + 'px';
+    pawn.style.position = 'absolute';
+    board.appendChild(pawn);
+  }
+
+  renderWalls();
+}
+
+function renderWalls() {
+  const layer = document.getElementById('wallLayer');
+  layer.innerHTML = '';
+
+  // The wall layer is inset 14px to match board padding.
+  // cell(r) x-start = r*(CELL+GAP), y-start = r*(CELL+GAP)
+  // Gap between row r and r+1 starts at y = r*(CELL+GAP)+CELL
+
+  // Horizontal wall slots: 8 rows (0..7) × 8 cols (0..7)
+  // Wall at (r,c): spans x=[c*(CELL+GAP), c*(CELL+GAP)+2*CELL+GAP], y=[r*(CELL+GAP)+CELL, +wall_w]
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const slot = document.createElement('div');
+      slot.className = 'wall-slot h';
+      const x = c * (CELL + GAP);
+      const y = r * (CELL + GAP) + CELL + (GAP - 10) / 2;
+      const w = 2 * CELL + GAP;
+      slot.style.left   = x + 'px';
+      slot.style.top    = y + 'px';
+      slot.style.width  = w + 'px';
+      slot.style.height = '10px';
+
+      if (state.hWalls[hwKey(r, c)]) {
+        slot.classList.add('placed');
+      } else if (state.mode === 'wall' && !state.gameOver) {
+        if (canPlaceWall('h', r, c)) {
+          slot.addEventListener('click', () => { placeWall('h', r, c); });
+        } else {
+          slot.classList.add('blocked');
+        }
+      }
+      layer.appendChild(slot);
+    }
+  }
+
+  // Vertical wall slots: 8 rows × 8 cols
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const slot = document.createElement('div');
+      slot.className = 'wall-slot v';
+      const x = c * (CELL + GAP) + CELL + (GAP - 10) / 2;
+      const y = r * (CELL + GAP);
+      const h = 2 * CELL + GAP;
+      slot.style.left   = x + 'px';
+      slot.style.top    = y + 'px';
+      slot.style.width  = '10px';
+      slot.style.height = h + 'px';
+
+      if (state.vWalls[vwKey(r, c)]) {
+        slot.classList.add('placed');
+      } else if (state.mode === 'wall' && !state.gameOver) {
+        if (canPlaceWall('v', r, c)) {
+          slot.addEventListener('click', () => { placeWall('v', r, c); });
+        } else {
+          slot.classList.add('blocked');
+        }
+      }
+      layer.appendChild(slot);
+    }
+  }
+}
+
+function onCellClick(e) {
+  if (state.gameOver || state.mode !== 'move') return;
+  const r = +e.currentTarget.dataset.r;
+  const c = +e.currentTarget.dataset.c;
+  const validMoves = getValidMoves(state.currentPlayer);
+  if (validMoves.some(([vr, vc]) => vr === r && vc === c)) {
+    movePawn(state.currentPlayer, r, c);
+  }
+}
+
+function renderPips() {
+  for (let p = 0; p < 2; p++) {
+    const container = document.getElementById(`pips${p+1}`);
+    container.innerHTML = '';
+    for (let i = 0; i < WALLS_PER_PLAYER; i++) {
+      const pip = document.createElement('div');
+      pip.className = 'pip' + (i >= state.wallsLeft[p] ? ' used' : '');
+      container.appendChild(pip);
+    }
+  }
+}
+
+function updateCards() {
+  document.getElementById('card1').className =
+    `player-card p1 ${state.currentPlayer === 0 ? 'active-p1' : ''}`;
+  document.getElementById('card2').className =
+    `player-card p2 ${state.currentPlayer === 1 ? 'active-p2' : ''}`;
+}
+
+function updateStatus() {
+  const bar = document.getElementById('statusBar');
+  const p = state.currentPlayer;
+  if (state.gameOver) return;
+  bar.className = `status-bar turn-p${p+1}`;
+  const names = ['PLAYER I', 'PLAYER II'];
+  if (state.mode === 'move') {
+    bar.textContent = `${names[p]} — MOVE YOUR PAWN OR PLACE A WALL`;
+  } else {
+    const w = state.wallsLeft[p];
+    bar.textContent = `${names[p]} — CLICK A WALL SLOT  ·  ${w} WALL${w===1?'':'S'} REMAINING`;
+  }
+}
+
+// ── COLUMN LABELS ──
+function renderLabels() {
+  const container = document.getElementById('colLabels');
+  const letters = 'ABCDEFGHI';
+  for (let c = 0; c < CELLS; c++) {
+    const lbl = document.createElement('div');
+    lbl.className = 'label';
+    lbl.textContent = letters[c];
+    container.appendChild(lbl);
+  }
+}
+
+// ── INIT ──
+renderLabels();
+initGame();
+</script>
+</body>
+</html>
